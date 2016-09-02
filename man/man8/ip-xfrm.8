@@ -296,6 +296,12 @@ ip-xfrm \- transform configuration
 .B "ip xfrm policy count"
 
 .ti -8
+.BR "ip xfrm policy save"
+
+.ti -8
+.BR "ip xfrm policy restore"
+
+.ti -8
 .B "ip xfrm policy set"
 .RB "[ " hthresh4
 .IR LBITS " " RBITS " ]"
@@ -592,6 +598,8 @@ ip xfrm policy get	get an existing policy
 ip xfrm policy deleteall	delete all existing xfrm policies
 ip xfrm policy list	print out the list of xfrm policies
 ip xfrm policy flush	flush policies
+ip xfrm policy save	save xfrm policies table information to stdout
+ip xfrm policy restore	restore xfrm policies table from stdin
 .TE
 
 .TP
