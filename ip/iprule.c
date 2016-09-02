@@ -478,24 +478,6 @@ int print_rule(struct nlmsghdr *n, void *arg)
 
 static __u32 rule_dump_magic = 0x71706986;
 
-static int save_rule_prep(void)
-{
-	int ret;
-
-	if (isatty(STDOUT_FILENO)) {
-		fprintf(stderr, "Not sending a binary stream to stdout\n");
-		return -1;
-	}
-
-	ret = write(STDOUT_FILENO, &rule_dump_magic, sizeof(rule_dump_magic));
-	if (ret != sizeof(rule_dump_magic)) {
-		fprintf(stderr, "Can't write magic to dump file\n");
-		return -1;
-	}
-
-	return 0;
-}
-
 static int save_rule(struct nlmsghdr *n, void *arg)
 {
 	int ret;
@@ -565,7 +547,7 @@ static int iprule_list_flush_or_save(int argc, char **argv, int action)
 
 	switch (action) {
 	case IPRULE_SAVE:
-		if (save_rule_prep())
+		if (dump_write_magic(rule_dump_magic))
 			return -1;
 		filter_fn = save_rule;
 		break;
@@ -724,26 +706,6 @@ static int iprule_list_flush_or_save(int argc, char **argv, int action)
 	return 0;
 }
 
-static int rule_dump_check_magic(void)
-{
-	int ret;
-	__u32 magic = 0;
-
-	if (isatty(STDIN_FILENO)) {
-		fprintf(stderr, "Can't restore rule dump from a terminal\n");
-		return -1;
-	}
-
-	ret = fread(&magic, sizeof(magic), 1, stdin);
-	if (magic != rule_dump_magic) {
-		fprintf(stderr, "Magic mismatch (%d elems, %x magic)\n",
-			ret, magic);
-		return -1;
-	}
-
-	return 0;
-}
-
 static int restore_handler(struct rtnl_ctrl_data *ctrl,
 			   struct nlmsghdr *n, void *arg)
 {
@@ -763,7 +725,7 @@ static int restore_handler(struct rtnl_ctrl_data *ctrl,
 
 static int iprule_restore(void)
 {
-	if (rule_dump_check_magic())
+	if (dump_check_magic(rule_dump_magic))
 		exit(-1);
 
 	exit(rtnl_from_file(stdin, &restore_handler, NULL));

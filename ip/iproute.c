@@ -1623,7 +1623,7 @@ static int save_route(struct nlmsghdr *n, void *arg)
 	return ret == n->nlmsg_len ? 0 : ret;
 }
 
-static int save_route_prep(void)
+int dump_write_magic(__u32 dump_magic)
 {
 	int ret;
 
@@ -1632,8 +1632,8 @@ static int save_route_prep(void)
 		return -1;
 	}
 
-	ret = write(STDOUT_FILENO, &route_dump_magic, sizeof(route_dump_magic));
-	if (ret != sizeof(route_dump_magic)) {
+	ret = write(STDOUT_FILENO, &dump_magic, sizeof(dump_magic));
+	if (ret != sizeof(dump_magic)) {
 		fprintf(stderr, "Can't write magic to dump file\n");
 		return -1;
 	}
@@ -1736,7 +1736,7 @@ static int iproute_list_flush_or_save(int argc, char **argv, int action)
 	rtnl_filter_t filter_fn;
 
 	if (action == IPROUTE_SAVE) {
-		if (save_route_prep())
+		if (dump_write_magic(route_dump_magic))
 			return -1;
 
 		filter_fn = save_route;
@@ -2236,18 +2236,18 @@ restore:
 	return ret;
 }
 
-static int route_dump_check_magic(void)
+int dump_check_magic(__u32 dump_magic)
 {
 	int ret;
 	__u32 magic = 0;
 
 	if (isatty(STDIN_FILENO)) {
-		fprintf(stderr, "Can't restore route dump from a terminal\n");
+		fprintf(stderr, "Can't restore dump from a terminal\n");
 		return -1;
 	}
 
 	ret = fread(&magic, sizeof(magic), 1, stdin);
-	if (magic != route_dump_magic) {
+	if (magic != dump_magic) {
 		fprintf(stderr, "Magic mismatch (%d elems, %x magic)\n", ret, magic);
 		return -1;
 	}
@@ -2259,8 +2259,8 @@ static int iproute_restore(void)
 {
 	int pos, prio;
 
-	if (route_dump_check_magic())
-		return -1;
+	if (dump_check_magic(route_dump_magic))
+		exit(-1);
 
 	pos = ftell(stdin);
 	if (pos == -1) {
@@ -2293,8 +2293,8 @@ static int show_handler(struct rtnl_ctrl_data *ctrl,
 
 static int iproute_showdump(void)
 {
-	if (route_dump_check_magic())
-		return -1;
+	if (dump_check_magic(route_dump_magic))
+		exit(-1);
 
 	if (rtnl_from_file(stdin, &show_handler, NULL))
 		return -2;

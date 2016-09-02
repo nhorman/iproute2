@@ -1647,43 +1647,6 @@ static int store_nlmsg(struct nlmsghdr *n, void *arg)
 
 static __u32 ipadd_dump_magic = 0x47361222;
 
-static int ipadd_save_prep(void)
-{
-	int ret;
-
-	if (isatty(STDOUT_FILENO)) {
-		fprintf(stderr, "Not sending a binary stream to stdout\n");
-		return -1;
-	}
-
-	ret = write(STDOUT_FILENO, &ipadd_dump_magic, sizeof(ipadd_dump_magic));
-	if (ret != sizeof(ipadd_dump_magic)) {
-		fprintf(stderr, "Can't write magic to dump file\n");
-		return -1;
-	}
-
-	return 0;
-}
-
-static int ipadd_dump_check_magic(void)
-{
-	int ret;
-	__u32 magic = 0;
-
-	if (isatty(STDIN_FILENO)) {
-		fprintf(stderr, "Can't restore address dump from a terminal\n");
-		return -1;
-	}
-
-	ret = fread(&magic, sizeof(magic), 1, stdin);
-	if (magic != ipadd_dump_magic) {
-		fprintf(stderr, "Magic mismatch (%d elems, %x magic)\n", ret, magic);
-		return -1;
-	}
-
-	return 0;
-}
-
 static int save_nlmsg(struct nlmsghdr *n, void *arg)
 {
 	int ret;
@@ -1713,8 +1676,7 @@ static int show_handler(struct rtnl_ctrl_data *ctrl,
 static int ipaddr_showdump(void)
 {
 	int err;
-
-	if (ipadd_dump_check_magic())
+	if (dump_check_magic(ipadd_dump_magic))
 		exit(-1);
 
 	new_json_obj(json);
@@ -1748,7 +1710,7 @@ static int restore_handler(struct rtnl_ctrl_data *ctrl,
 
 static int ipaddr_restore(void)
 {
-	if (ipadd_dump_check_magic())
+	if (dump_check_magic(ipadd_dump_magic))
 		exit(-1);
 
 	exit(rtnl_from_file(stdin, &restore_handler, NULL));
@@ -2082,7 +2044,7 @@ static int ipaddr_list_flush_or_save(int argc, char **argv, int action)
 		return ipaddr_flush();
 
 	if (action == IPADD_SAVE) {
-		if (ipadd_save_prep())
+		if (dump_write_magic(ipadd_dump_magic))
 			exit(1);
 
 		if (rtnl_addrdump_req(&rth, preferred_family,
