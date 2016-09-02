@@ -121,7 +121,7 @@ ip-xfrm \- transform configuration
 .BR "ip xfrm state count"
 
 .ti -8
-.BR "ip xfrm state save"
+.BR "ip xfrm state save" " [ " fixlimits " ]"
 
 .ti -8
 .BR "ip xfrm state restore"
@@ -586,6 +586,14 @@ of the packets emitted by the state
 .TP
 .I IF-ID
 xfrm interface identifier used to in both xfrm policies and states
+
+.P
+If the
+.BI fixlimits
+option is set on save, change entry
+.I LIMITs
+saved to dump file according to the real time/bytes/packets passed
+since entry add-time.
 
 .sp
 .PP

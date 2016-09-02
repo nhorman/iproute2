@@ -32,6 +32,7 @@
 #include "xfrm.h"
 #include "ip_common.h"
 #include <errno.h>
+#include <time.h>
 
 /* #define NLMSG_DELETEALL_BUF_SIZE (4096-512) */
 #define NLMSG_DELETEALL_BUF_SIZE 8192
@@ -63,7 +64,6 @@ static void usage(void)
 		"        [ flag FLAG-LIST ] [ sel SELECTOR ] [ LIMIT-LIST ] [ encap ENCAP ]\n"
 		"        [ coa ADDR[/PLEN] ] [ ctx CTX ] [ extra-flag EXTRA-FLAG-LIST ]\n"
 		"        [ offload [dev DEV] dir DIR ]\n"
-		"        [ output-mark OUTPUT-MARK [ mask MASK ] ]\n"
 		"        [ if_id IF_ID ]\n"
 		"Usage: ip xfrm state allocspi ID [ mode MODE ] [ mark MARK [ mask MASK ] ]\n"
 		"        [ reqid REQID ] [ seq SEQ ] [ min SPI max SPI ]\n"
@@ -1190,11 +1190,89 @@ static int xfrm_state_keep(struct nlmsghdr *n, void *arg)
 
 static __u32 state_dump_magic = 0x71706987;
 
+static inline void fixup_lft_limit(__u64 *lft_limit, __u64 lft_cur)
+{
+	if (lft_cur < *lft_limit)
+		/*
+		 * Limit is not yet hit, decrease it by
+		 * current lifetime
+		 */
+		*lft_limit -= lft_cur;
+	else
+		/*
+		 * Limit is already hit or almost hit, set it
+		 * to 1 to hit it imediately after restore
+		 */
+		*lft_limit = 1;
+}
+
+static int fixup_lifetime(struct xfrm_lifetime_cur *curlft, struct xfrm_lifetime_cfg *lft)
+{
+	unsigned long now;
+	__u64 time_since_add, time_since_use;
+
+	now = time(NULL);
+	if (now < 0) {
+		fprintf(stderr, "Failed to get current time\n");
+		return -1;
+	}
+	time_since_add = now - curlft->add_time;
+	time_since_use = now - (curlft->use_time ? : curlft->add_time);
+
+	/* Fixup expire timeouts */
+	if (lft->hard_add_expires_seconds)
+		fixup_lft_limit(&lft->hard_add_expires_seconds, time_since_add);
+	if (lft->hard_use_expires_seconds)
+		fixup_lft_limit(&lft->hard_use_expires_seconds, time_since_use);
+	if (lft->soft_add_expires_seconds)
+		fixup_lft_limit(&lft->soft_add_expires_seconds, time_since_add);
+	if (lft->soft_use_expires_seconds)
+		fixup_lft_limit(&lft->soft_use_expires_seconds, time_since_use);
+
+	/* Fixup expire limits */
+	if (lft->hard_byte_limit != XFRM_INF)
+		fixup_lft_limit(&lft->hard_byte_limit, curlft->bytes);
+	if (lft->hard_packet_limit != XFRM_INF)
+		fixup_lft_limit(&lft->hard_packet_limit, curlft->packets);
+	if (lft->soft_byte_limit != XFRM_INF)
+		fixup_lft_limit(&lft->soft_byte_limit, curlft->bytes);
+	if (lft->soft_packet_limit != XFRM_INF)
+		fixup_lft_limit(&lft->soft_packet_limit, curlft->packets);
+
+	return 0;
+}
+
+static int save_state(const struct sockaddr_nl *who, struct nlmsghdr *n,
+		void *arg)
+{
+	struct xfrm_usersa_info *xsinfo;
+	int len = n->nlmsg_len;
+
+	if (n->nlmsg_type != XFRM_MSG_NEWSA) {
+		fprintf(stderr, "BUG: wrong nlmsg_type: %08x\n",
+			n->nlmsg_type);
+		return -1;
+	}
+
+	xsinfo = NLMSG_DATA(n);
+	len -= NLMSG_SPACE(sizeof(*xsinfo));
+
+	if (len < 0) {
+		fprintf(stderr, "BUG: wrong nlmsg len %d\n", len);
+		return -1;
+	}
+
+	if (fixup_lifetime(&xsinfo->curlft, &xsinfo->lft))
+		return -1;
+
+	return save_nlmsg(who, n, arg);
+}
+
 static int xfrm_state_list_deleteall_or_save(int argc, char **argv, int deleteall, int save)
 {
 	char *idp = NULL;
 	struct rtnl_handle rth;
-	bool nokeys = false;
+	int fixlimits = 0;
 
 	if (argc > 0 || preferred_family != AF_UNSPEC)
 		filter.use = 1;
@@ -1220,6 +1298,9 @@ static int xfrm_state_list_deleteall_or_save(int argc, char **argv, int deleteal
 			xfrm_state_flag_parse(&filter.xsinfo.flags, &argc, &argv);
 
 			filter.state_flags_mask = XFRM_FILTER_MASK_FULL;
+
+		} else if (strcmp(*argv, "fixlimits") == 0) {
+			fixlimits = 1;
 
 		} else {
 			if (idp)
@@ -1295,7 +1376,7 @@ static int xfrm_state_list_deleteall_or_save(int argc, char **argv, int deleteal
 		if (save) {
 			if (dump_write_magic(state_dump_magic))
 				return -1;
-			rtnl_filter = save_nlmsg;
+			rtnl_filter = fixlimits ? save_state : save_nlmsg;
 		}
 
 		struct xfrm_address_filter addrfilter = {
