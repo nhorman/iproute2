@@ -1599,9 +1599,23 @@ static int iproute_flush_cache(void)
 
 static __u32 route_dump_magic = 0x45311224;
 
-static int save_route(struct nlmsghdr *n, void *arg)
+int save_nlmsg(const struct sockaddr_nl *who, struct nlmsghdr *n,
+		       void *arg)
 {
 	int ret;
+
+	ret = write(STDOUT_FILENO, n, n->nlmsg_len);
+	if ((ret > 0) && (ret != n->nlmsg_len)) {
+		fprintf(stderr, "Short write while saving nlmsg\n");
+		ret = -EIO;
+	}
+
+	return ret == n->nlmsg_len ? 0 : ret;
+}
+
+static int save_route(const struct sockaddr_nl *who, struct nlmsghdr *n,
+		      void *arg)
+{
 	int len = n->nlmsg_len;
 	struct rtmsg *r = NLMSG_DATA(n);
 	struct rtattr *tb[RTA_MAX+1];
@@ -1614,13 +1628,7 @@ static int save_route(struct nlmsghdr *n, void *arg)
 	if (!filter_nlmsg(n, tb, host_len))
 		return 0;
 
-	ret = write(STDOUT_FILENO, n, n->nlmsg_len);
-	if ((ret > 0) && (ret != n->nlmsg_len)) {
-		fprintf(stderr, "Short write while saving nlmsg\n");
-		ret = -EIO;
-	}
-
-	return ret == n->nlmsg_len ? 0 : ret;
+	return save_nlmsg(who, n, arg);
 }
 
 int dump_write_magic(__u32 dump_magic)

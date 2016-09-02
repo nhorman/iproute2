@@ -1646,22 +1646,8 @@ static int store_nlmsg(struct nlmsghdr *n, void *arg)
 }
 
 static __u32 ipadd_dump_magic = 0x47361222;
-
-static int save_nlmsg(struct nlmsghdr *n, void *arg)
-{
-	int ret;
-
-	ret = write(STDOUT_FILENO, n, n->nlmsg_len);
-	if ((ret > 0) && (ret != n->nlmsg_len)) {
-		fprintf(stderr, "Short write while saving nlmsg\n");
-		ret = -EIO;
-	}
-
-	return ret == n->nlmsg_len ? 0 : ret;
-}
-
-static int show_handler(struct rtnl_ctrl_data *ctrl,
-			struct nlmsghdr *n, void *arg)
+static int show_handler(struct nlmsghdr *n, 
+			void *arg)
 {
 	struct ifaddrmsg *ifa = NLMSG_DATA(n);
 

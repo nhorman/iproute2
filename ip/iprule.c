@@ -478,56 +478,8 @@ int print_rule(struct nlmsghdr *n, void *arg)
 
 static __u32 rule_dump_magic = 0x71706986;
 
-static int save_rule(struct nlmsghdr *n, void *arg)
+static int iprule_list_or_save(int argc, char **argv, int save)
 {
-	int ret;
-
-	ret = write(STDOUT_FILENO, n, n->nlmsg_len);
-	if ((ret > 0) && (ret != n->nlmsg_len)) {
-		fprintf(stderr, "Short write while saving nlmsg\n");
-		ret = -EIO;
-	}
-
-	return ret == n->nlmsg_len ? 0 : ret;
-}
-
-static int flush_rule(struct nlmsghdr *n, void *arg)
-{
-	struct rtnl_handle rth2;
-	struct fib_rule_hdr *frh = NLMSG_DATA(n);
-	int len = n->nlmsg_len;
-	struct rtattr *tb[FRA_MAX+1];
-	int host_len = -1;
-
-	len -= NLMSG_LENGTH(sizeof(*frh));
-	if (len < 0)
-		return -1;
-
-	parse_rtattr(tb, FRA_MAX, RTM_RTA(frh), len);
-
-	host_len = af_bit_len(frh->family);
-	if (!filter_nlmsg(n, tb, host_len))
-		return 0;
-
-	if (tb[FRA_PROTOCOL]) {
-		__u8 protocol = rta_getattr_u8(tb[FRA_PROTOCOL]);
-
-		if ((filter.protocol ^ protocol) & filter.protocolmask)
-			return 0;
-	}
-
-	if (tb[FRA_PRIORITY]) {
-		n->nlmsg_type = RTM_DELRULE;
-		n->nlmsg_flags = NLM_F_REQUEST;
-
-		if (rtnl_open(&rth2, 0) < 0)
-			return -1;
-
-		if (rtnl_talk(&rth2, n, NULL) < 0)
-			return -2;
-
-		rtnl_close(&rth2);
-	}
 
 	return 0;
 }
@@ -549,10 +501,8 @@ static int iprule_list_flush_or_save(int argc, char **argv, int action)
 	case IPRULE_SAVE:
 		if (dump_write_magic(rule_dump_magic))
 			return -1;
-		filter_fn = save_rule;
 		break;
 	case IPRULE_FLUSH:
-		filter_fn = flush_rule;
 		break;
 	default:
 		filter_fn = print_rule;
