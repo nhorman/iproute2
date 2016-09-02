@@ -109,6 +109,11 @@ extern int dump_check_magic(__u32 dump_magic);
 extern int save_nlmsg(
 		struct nlmsghdr *n, void *arg);
 
+#ifdef _LINUX_XFRM_H
+extern int fixup_lifetime(struct xfrm_lifetime_cur *curlft,
+		struct xfrm_lifetime_cfg *lft);
+#endif
+
 extern struct rtnl_handle rth;
 
 struct iplink_req {

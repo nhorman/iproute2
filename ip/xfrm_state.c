@@ -1206,7 +1206,7 @@ static inline void fixup_lft_limit(__u64 *lft_limit, __u64 lft_cur)
 		*lft_limit = 1;
 }
 
-static int fixup_lifetime(struct xfrm_lifetime_cur *curlft, struct xfrm_lifetime_cfg *lft)
+int fixup_lifetime(struct xfrm_lifetime_cur *curlft, struct xfrm_lifetime_cfg *lft)
 {
 	unsigned long now;
 	__u64 time_since_add, time_since_use;
@@ -1265,7 +1265,7 @@ static int save_state(const struct sockaddr_nl *who, struct nlmsghdr *n,
 	if (fixup_lifetime(&xsinfo->curlft, &xsinfo->lft))
 		return -1;
 
-	return save_nlmsg(who, n, arg);
+	return save_nlmsg(n, arg);
 }
 
 static int xfrm_state_list_deleteall_or_save(int argc, char **argv, int deleteall, int save)
@@ -1279,9 +1279,7 @@ static int xfrm_state_list_deleteall_or_save(int argc, char **argv, int deleteal
 	filter.xsinfo.family = preferred_family;
 
 	while (argc > 0) {
-		if (strcmp(*argv, "nokeys") == 0) {
-			nokeys = true;
-		} else if (strcmp(*argv, "mode") == 0) {
+		if (strcmp(*argv, "mode") == 0) {
 			NEXT_ARG();
 			xfrm_mode_parse(&filter.xsinfo.mode, &argc, &argv);
 

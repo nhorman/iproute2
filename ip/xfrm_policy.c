@@ -59,7 +59,6 @@ static void usage(void)
 		"	[ action ACTION ] [ priority PRIORITY ] [ flag FLAG-LIST ]\n"
 		"	[ if_id IF_ID ] [ LIMIT-LIST ] [ TMPL-LIST ]\n"
 		"Usage: ip xfrm policy { delete | get } { SELECTOR | index INDEX } dir DIR\n"
-		"	[ ctx CTX ] [ mark MARK [ mask MASK ] ] [ ptype PTYPE ]\n"
 		"	[ if_id IF_ID ]\n"
 		"Usage: ip xfrm policy { deleteall | list } [ nosock ] [ SELECTOR ] [ dir DIR ]\n"
 		"	[ index INDEX ] [ ptype PTYPE ] [ action ACTION ] [ priority PRIORITY ]\n"
@@ -791,10 +790,37 @@ static int xfrm_policy_keep(struct nlmsghdr *n, void *arg)
 
 static __u32 policy_dump_magic = 0x71706988;
 
+static int save_policy(struct nlmsghdr *n,
+		void *arg)
+{
+	struct xfrm_userpolicy_info *xpinfo;
+	int len = n->nlmsg_len;
+
+	if (n->nlmsg_type != XFRM_MSG_NEWPOLICY) {
+		fprintf(stderr, "BUG: wrong nlmsg_type: %08x\n",
+			n->nlmsg_type);
+		return -1;
+	}
+
+	xpinfo = NLMSG_DATA(n);
+	len -= NLMSG_SPACE(sizeof(*xpinfo));
+
+	if (len < 0) {
+		fprintf(stderr, "BUG: wrong nlmsg len %d\n", len);
+		return -1;
+	}
+
+	if (fixup_lifetime(&xpinfo->curlft, &xpinfo->lft))
+		return -1;
+
+	return save_nlmsg(n, arg);
+}
+
 static int xfrm_policy_list_or_deleteall_or_save(int argc, char **argv, int deleteall, int save)
 {
 	char *selp = NULL;
 	struct rtnl_handle rth;
+	int fixlimits = 0;
 
 	if (argc > 0 || preferred_family != AF_UNSPEC)
 		filter.use = 1;
@@ -845,9 +871,9 @@ static int xfrm_policy_list_or_deleteall_or_save(int argc, char **argv, int dele
 
 			filter.policy_flags_mask = XFRM_FILTER_MASK_FULL;
 
-		} else if (strcmp(*argv, "nosock") == 0) {
-			/* filter all socket-based policies */
-			filter.filter_socket = 1;
+		} else if (strcmp(*argv, "fixlimits") == 0) {
+			fixlimits = 1;
+
 		} else {
 			if (selp)
 				invarg("unknown", *argv);
@@ -921,7 +947,7 @@ static int xfrm_policy_list_or_deleteall_or_save(int argc, char **argv, int dele
 		if (save) {
 			if (dump_write_magic(policy_dump_magic))
 				return -1;
-			rtnl_filter = save_nlmsg;
+			rtnl_filter = fixlimits ? save_policy : save_nlmsg;
 		}
 
 		struct {
@@ -950,7 +976,7 @@ static int xfrm_policy_list_or_deleteall_or_save(int argc, char **argv, int dele
 	exit(0);
 }
 
-static int restore_handler(const struct sockaddr_nl *nl,
+static int restore_handler(
 			   struct rtnl_ctrl_data *ctrl,
 			   struct nlmsghdr *n, void *arg)
 {
@@ -979,7 +1005,7 @@ static int restore_handler(const struct sockaddr_nl *nl,
 
 	n->nlmsg_flags |= NLM_F_REQUEST | NLM_F_CREATE | NLM_F_ACK;
 
-	ret = rtnl_talk(rth, n, n, sizeof(*n));
+	ret = rtnl_talk(rth, n, &n);
 	if ((ret < 0) && (errno == EEXIST))
 		ret = 0;
 
