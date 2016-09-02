@@ -31,6 +31,7 @@
 #include "utils.h"
 #include "xfrm.h"
 #include "ip_common.h"
+#include <errno.h>
 
 /* #define NLMSG_DELETEALL_BUF_SIZE (4096-512) */
 #define NLMSG_DELETEALL_BUF_SIZE 8192
@@ -1187,7 +1188,9 @@ static int xfrm_state_keep(struct nlmsghdr *n, void *arg)
 	return 0;
 }
 
-static int xfrm_state_list_or_deleteall(int argc, char **argv, int deleteall)
+static __u32 state_dump_magic = 0x71706987;
+
+static int xfrm_state_list_deleteall_or_save(int argc, char **argv, int deleteall, int save)
 {
 	char *idp = NULL;
 	struct rtnl_handle rth;
@@ -1288,6 +1291,13 @@ static int xfrm_state_list_or_deleteall(int argc, char **argv, int deleteall)
 		}
 
 	} else {
+		rtnl_filter_t rtnl_filter = xfrm_state_print;
+		if (save) {
+			if (dump_write_magic(state_dump_magic))
+				return -1;
+			rtnl_filter = save_nlmsg;
+		}
+
 		struct xfrm_address_filter addrfilter = {
 			.saddr = filter.xsinfo.saddr,
 			.daddr = filter.xsinfo.id.daddr,
@@ -1316,9 +1326,7 @@ static int xfrm_state_list_or_deleteall(int argc, char **argv, int deleteall)
 			exit(1);
 		}
 
-		rtnl_filter_t filter = nokeys ?
-				xfrm_state_print_nokeys : xfrm_state_print;
-		if (rtnl_dump_filter(&rth, filter, stdout) < 0) {
+		if (rtnl_dump_filter(&rth, rtnl_filter, stdout) < 0) {
 			fprintf(stderr, "Dump terminated\n");
 			exit(1);
 		}
@@ -1327,6 +1335,35 @@ static int xfrm_state_list_or_deleteall(int argc, char **argv, int deleteall)
 	rtnl_close(&rth);
 
 	exit(0);
+}
+
+static int restore_handler(
+			   struct rtnl_ctrl_data *ctrl,
+			   struct nlmsghdr *n, void *arg)
+{
+	struct rtnl_handle *rth = (struct rtnl_handle *)arg;
+	int ret;
+
+	n->nlmsg_flags |= NLM_F_REQUEST | NLM_F_CREATE | NLM_F_ACK;
+
+	ret = rtnl_talk(rth, n, &n);
+	if ((ret < 0) && (errno == EEXIST))
+		ret = 0;
+
+	return ret;
+}
+
+static int xfrm_state_restore(void)
+{
+	struct rtnl_handle rth;
+
+	if (dump_check_magic(state_dump_magic))
+		exit(-1);
+
+	if (rtnl_open_byproto(&rth, 0, NETLINK_XFRM) < 0)
+		exit(1);
+
+	exit(rtnl_from_file(stdin, &restore_handler, (void *)&rth));
 }
 
 static int print_sadinfo(struct nlmsghdr *n, void *arg)
@@ -1458,7 +1495,7 @@ static int xfrm_state_flush(int argc, char **argv)
 int do_xfrm_state(int argc, char **argv)
 {
 	if (argc < 1)
-		return xfrm_state_list_or_deleteall(0, NULL, 0);
+		return xfrm_state_list_deleteall_or_save(0, NULL, 0, 0);
 
 	if (matches(*argv, "add") == 0)
 		return xfrm_state_modify(XFRM_MSG_NEWSA, 0,
@@ -1471,10 +1508,14 @@ int do_xfrm_state(int argc, char **argv)
 	if (matches(*argv, "delete") == 0)
 		return xfrm_state_get_or_delete(argc-1, argv+1, 1);
 	if (matches(*argv, "deleteall") == 0 || matches(*argv, "delall") == 0)
-		return xfrm_state_list_or_deleteall(argc-1, argv+1, 1);
+		return xfrm_state_list_deleteall_or_save(argc-1, argv+1, 1, 0);
 	if (matches(*argv, "list") == 0 || matches(*argv, "show") == 0
 	    || matches(*argv, "lst") == 0)
-		return xfrm_state_list_or_deleteall(argc-1, argv+1, 0);
+		return xfrm_state_list_deleteall_or_save(argc-1, argv+1, 0, 0);
+	if (matches(*argv, "save") == 0)
+		return xfrm_state_list_deleteall_or_save(argc-1, argv+1, 0, 1);
+	if (matches(*argv, "restore") == 0)
+		return xfrm_state_restore();
 	if (matches(*argv, "get") == 0)
 		return xfrm_state_get_or_delete(argc-1, argv+1, 0);
 	if (matches(*argv, "flush") == 0)

@@ -121,6 +121,12 @@ ip-xfrm \- transform configuration
 .BR "ip xfrm state count"
 
 .ti -8
+.BR "ip xfrm state save"
+
+.ti -8
+.BR "ip xfrm state restore"
+
+.ti -8
 .IR ID " :="
 .RB "[ " src
 .IR ADDR " ]"
@@ -438,6 +444,8 @@ ip xfrm state deleteall	delete all existing state in xfrm
 ip xfrm state list	print out the list of existing state in xfrm
 ip xfrm state flush	flush all state in xfrm
 ip xfrm state count	count all existing state in xfrm
+ip xfrm state save	save xfrm states table information to stdout
+ip xfrm state restore	restore xfrm states table from stdin
 .TE
 
 .TP

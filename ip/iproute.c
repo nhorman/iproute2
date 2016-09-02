@@ -1599,7 +1599,7 @@ static int iproute_flush_cache(void)
 
 static __u32 route_dump_magic = 0x45311224;
 
-int save_nlmsg(const struct sockaddr_nl *who, struct nlmsghdr *n,
+int save_nlmsg(struct nlmsghdr *n,
 		       void *arg)
 {
 	int ret;
@@ -1628,7 +1628,7 @@ static int save_route(const struct sockaddr_nl *who, struct nlmsghdr *n,
 	if (!filter_nlmsg(n, tb, host_len))
 		return 0;
 
-	return save_nlmsg(who, n, arg);
+	return save_nlmsg(n, arg);
 }
 
 int dump_write_magic(__u32 dump_magic)

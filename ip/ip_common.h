@@ -106,7 +106,7 @@ static inline int rtm_get_table(struct rtmsg *r, struct rtattr **tb)
 
 extern int dump_write_magic(__u32 dump_magic);
 extern int dump_check_magic(__u32 dump_magic);
-extern int save_nlmsg(const struct sockaddr_nl *who,
+extern int save_nlmsg(
 		struct nlmsghdr *n, void *arg);
 
 extern struct rtnl_handle rth;
